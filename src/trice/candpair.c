@@ -379,6 +379,52 @@ static struct ice_candpair *find_same_base(struct trice *icem,
 }
 
 
+/* Pair a local candidate with a remote candidate */
+static int create_pair(struct trice *icem, struct ice_lcand *lcand,
+		       struct ice_rcand *rcand)
+{
+	struct ice_candpair *cpx;
+
+	if (lcand->attr.compid != rcand->attr.compid ||
+	    lcand->attr.proto != rcand->attr.proto ||
+	    sa_af(&lcand->attr.addr) != sa_af(&rcand->attr.addr)) {
+		return 0;
+	}
+
+	/* loopback: only pair with loopback addresses */
+	if (sa_is_loopback(&lcand->attr.addr) !=
+	    sa_is_loopback(&rcand->attr.addr)) {
+		return 0;
+	}
+
+	/* link-local: only pair with link-local addresses */
+	if (sa_is_linklocal(&lcand->attr.addr) !=
+	    sa_is_linklocal(&rcand->attr.addr)) {
+		return 0;
+	}
+
+	cpx = find_same_base(icem, lcand, rcand);
+	if (cpx) {
+		trice_printf(icem,
+				"with: pair with same"
+				" base already exist"
+				" (%H)\n",
+				trice_candpair_debug, cpx);
+
+		return 0;
+	}
+
+	if (lcand->attr.proto == IPPROTO_TCP) {
+		if (!tcptype_match(lcand->attr.tcptype,
+				   rcand->attr.tcptype))
+			return 0;
+	}
+
+	/* add sorted */
+	return trice_candpair_alloc(NULL, icem, lcand, rcand);
+}
+
+
 /* Pair a candidate with all other candidates of the opposite kind */
 int trice_candpair_with_local(struct trice *icem, struct ice_lcand *lcand)
 {
@@ -396,34 +442,9 @@ int trice_candpair_with_local(struct trice *icem, struct ice_lcand *lcand)
 
 		struct ice_rcand *rcand = le->data;
 
-		if (lcand->attr.compid == rcand->attr.compid &&
-		    lcand->attr.proto == rcand->attr.proto &&
-		    sa_af(&lcand->attr.addr) == sa_af(&rcand->attr.addr)) {
-
-			struct ice_candpair *cpx;
-
-			cpx = find_same_base(icem, lcand, rcand);
-			if (cpx) {
-				trice_printf(icem,
-					    "with: pair with same"
-					    " base already exist"
-					    " (%H)\n",
-					    trice_candpair_debug, cpx);
-
-				continue;
-			}
-
-			if (lcand->attr.proto == IPPROTO_TCP) {
-				if (!tcptype_match(lcand->attr.tcptype,
-						   rcand->attr.tcptype))
-					continue;
-			}
-
-			/* add sorted */
-			err = trice_candpair_alloc(NULL, icem, lcand, rcand);
-			if (err)
-				goto out;
-		}
+		err = create_pair(icem, lcand, rcand);
+		if (err)
+			goto out;
 	}
 
  out:
@@ -448,34 +469,9 @@ int trice_candpair_with_remote(struct trice *icem, struct ice_rcand *rcand)
 
 		struct ice_lcand *lcand = le->data;
 
-		if (lcand->attr.compid == rcand->attr.compid &&
-		    lcand->attr.proto == rcand->attr.proto &&
-		    sa_af(&lcand->attr.addr) == sa_af(&rcand->attr.addr)) {
-
-			struct ice_candpair *cpx;
-
-			cpx = find_same_base(icem, lcand, rcand);
-			if (cpx) {
-				trice_printf(icem,
-					    "with: pair with same"
-					    " base already exist"
-					    " (%H)\n",
-					    trice_candpair_debug, cpx);
-
-				continue;
-			}
-
-			if (lcand->attr.proto == IPPROTO_TCP) {
-				if (!tcptype_match(lcand->attr.tcptype,
-						   rcand->attr.tcptype))
-					continue;
-			}
-
-			/* add sorted */
-			err = trice_candpair_alloc(NULL, icem, lcand, rcand);
-			if (err)
-				goto out;
-		}
+		err = create_pair(icem, lcand, rcand);
+		if (err)
+			goto out;
 	}
 
  out:
